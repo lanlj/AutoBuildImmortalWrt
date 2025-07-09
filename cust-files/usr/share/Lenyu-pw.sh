@@ -31,7 +31,7 @@ if opkg list-installed | grep -q unzip; then
 else
   # 下载 unzip 包
   echo "开始下载 unzip 包..."
-  wget -q --show-progress "$UNZIP_URL" -O "$UNZIP_PACKAGE"
+  wget -q "$UNZIP_URL" -O "$UNZIP_PACKAGE"
 
   # 检查下载是否成功
   if [ $? -eq 0 ]; then
@@ -44,6 +44,7 @@ else
     else
       echo "unzip 安装失败！"
     fi
+    rm -rf "$UNZIP_PACKAGE"
   else
     echo "unzip 下载失败！"
   fi
@@ -73,9 +74,9 @@ i18n_file=$(basename "$luci_i18n_passwall_url")
 version2410=$(echo "$app_file" | sed -E 's/^luci-24\.10_luci-app-passwall_([^_]+)_all\.ipk$/\1/')
 echo_blue "最新云端版本号：$version2410"
 
-# 将当前安装的版本写入 psversion 文件
+# 提取当前安装的版本号
 installed_version=$(opkg list-installed | grep luci-app-passwall | awk '{print $3}')
-echo_blue "最新本地版本号：$installed_version"
+echo_blue "当前本地版本号：$installed_version"
 
 # 检查版本是否已经是最新的，比较时使用 version2410 变量
 if [ "$installed_version" = "$version2410" ]; then
@@ -96,21 +97,32 @@ fi
 # 用户确认后继续更新
 echo_blue "新版本可用，开始更新..."
 
+# 是否更新软件包依赖（10秒倒计时，默认 n）
+echo_orange "是否同时下载并更新软件包依赖？(y/n, 回车默认n，10秒后自动执行n)"
+read -t 10 -r update_confirmation
+update_confirmation=${update_confirmation:-n}
+
 # 下载文件到临时目录（保持原文件名）
 wget -O "$TEMP_DIR/$app_file" "$luci_app_passwall_url"
 wget -O "$TEMP_DIR/$i18n_file" "$luci_i18n_passwall_url"
-wget -O "$TEMP_DIR/passwall_packages_ipk_x86_64.zip" "$passwall_packages_url"
+if [ "$update_confirmation" = "y" ]; then
+  wget -O "$TEMP_DIR/passwall_packages_ipk_x86_64.zip" "$passwall_packages_url"
+fi
 sleep 5
 echo "下载完成:"
 echo "$TEMP_DIR/$app_file"
 echo "$TEMP_DIR/$i18n_file"
-echo "$TEMP_DIR/passwall_packages_ipk_x86_64.zip"
+if [ "$update_confirmation" = "y" ]; then
+  echo "$TEMP_DIR/passwall_packages_ipk_x86_64.zip"
+fi
 
 # 安装下载的 IPK 包
-sleep 1
 /etc/init.d/passwall stop
-unzip -d "$TEMP_DIR/pks" "$TEMP_DIR/passwall_packages_ipk_x86_64.zip"
-opkg install $TEMP_DIR/pks/*.ipk
+sleep 5
+if [ "$update_confirmation" = "y" ]; then
+  unzip -d "$TEMP_DIR/pks" "$TEMP_DIR/passwall_packages_ipk_x86_64.zip"
+  opkg install $TEMP_DIR/pks/*.ipk
+fi
 opkg install "$TEMP_DIR/$app_file" --force-overwrite
 opkg install "$TEMP_DIR/$i18n_file" --force-overwrite
 
